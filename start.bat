@@ -1,9 +1,9 @@
 @echo off
-cd /d "C:\Users\Lenovo\Desktop\Personal\BackendProject\form-builder"
+cd /d "%~dp0"
 
 echo.
 echo ========================================
-echo AI Form Builder - Setup and Start
+echo FormForge - Setup and Start
 echo ========================================
 echo.
 

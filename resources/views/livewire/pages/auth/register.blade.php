@@ -37,6 +37,10 @@ new #[Layout('layouts.guest')] class extends Component
 }; ?>
 
 <div>
+    <div class="mb-7">
+        <h1 class="text-2xl font-extrabold tracking-tight text-ink">Create your account</h1>
+        <p class="mt-1 text-sm text-slate-500">Start building beautiful forms in seconds.</p>
+    </div>
     <form wire:submit="register">
         <!-- Name -->
         <div>
@@ -76,7 +80,7 @@ new #[Layout('layouts.guest')] class extends Component
         </div>
 
         <div class="flex items-center justify-end mt-4">
-            <a class="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" href="{{ route('login') }}" wire:navigate>
+            <a class="text-sm font-semibold text-violet-600 hover:text-violet-800" href="{{ route('login') }}" wire:navigate>
                 {{ __('Already registered?') }}
             </a>
 

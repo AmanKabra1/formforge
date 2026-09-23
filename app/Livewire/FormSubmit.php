@@ -27,7 +27,9 @@ class FormSubmit extends Component
         );
 
         foreach ($this->form->fields as $field) {
-            $this->answers[$field['key']] = $field['default'] ?? '';
+            $this->answers[$field['key']] = $field['type'] === 'checkbox'
+                ? (array) (($field['default'] ?? null) ?: [])
+                : ($field['default'] ?? '');
         }
     }
 
@@ -92,6 +94,7 @@ class FormSubmit extends Component
     public function render()
     {
         return view('livewire.form-submit')
-            ->layout('layouts.bare');
+            ->layout('layouts.bare')
+            ->title($this->form->title);
     }
 }

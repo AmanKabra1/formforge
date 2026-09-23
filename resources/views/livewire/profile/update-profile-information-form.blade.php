@@ -64,11 +64,11 @@ new class extends Component
 
 <section>
     <header>
-        <h2 class="text-lg font-medium text-gray-900">
+        <h2 class="text-lg font-bold text-ink">
             {{ __('Profile Information') }}
         </h2>
 
-        <p class="mt-1 text-sm text-gray-600">
+        <p class="mt-1 text-sm text-slate-500">
             {{ __("Update your account's profile information and email address.") }}
         </p>
     </header>
@@ -90,7 +90,7 @@ new class extends Component
                     <p class="text-sm mt-2 text-gray-800">
                         {{ __('Your email address is unverified.') }}
 
-                        <button wire:click.prevent="sendVerification" class="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        <button wire:click.prevent="sendVerification" class="underline text-sm text-slate-500 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                             {{ __('Click here to re-send the verification email.') }}
                         </button>
                     </p>

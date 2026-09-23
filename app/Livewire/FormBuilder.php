@@ -28,6 +28,8 @@ class FormBuilder extends Component
     public bool    $showAiPanel     = false;
     public bool    $showVersions    = false;
     public array   $schemaErrors    = [];
+    public bool    $dirty           = false;
+    public ?string $justAddedId     = null;
 
     protected $listeners = ['fieldReordered' => 'reorderFields'];
 
@@ -42,7 +44,30 @@ class FormBuilder extends Component
             $this->status  = $form->status;
             $this->fields  = $form->schema['fields'] ?? [];
             $this->syncRaw();
+            $this->dirty = false;
         }
+
+        // Arriving from the dashboard's "Describe a form…" bar
+        if (request()->boolean('ai')) {
+            $this->showAiPanel = true;
+            $this->aiPrompt    = (string) request('prompt', '');
+        }
+    }
+
+    public function updated(string $property): void
+    {
+        if (in_array($property, ['title', 'description', 'status'])) {
+            $this->dirty = true;
+        }
+    }
+
+    public function addFieldAt(string $type, int $index): void
+    {
+        $this->addField($type);
+        $new = array_pop($this->fields);
+        array_splice($this->fields, max(0, min($index, count($this->fields))), 0, [$new]);
+        $this->reindex();
+        $this->syncRaw();
     }
 
     public function addField(string $type): void
@@ -68,6 +93,7 @@ class FormBuilder extends Component
             'conditions'  => [],
         ];
         $this->selectedFieldId = $this->fields[count($this->fields) - 1]['id'];
+        $this->justAddedId     = $this->selectedFieldId;
         $this->syncRaw();
     }
 
@@ -88,6 +114,7 @@ class FormBuilder extends Component
                 $copy['id']  = (string) Str::uuid();
                 $copy['key'] = $field['key'] . '_copy';
                 array_splice($this->fields, $i + 1, 0, [$copy]);
+                $this->justAddedId = $copy['id'];
                 break;
             }
         }
@@ -140,7 +167,7 @@ class FormBuilder extends Component
         $this->fields = array_values(
             array_map(fn($id) => $indexed[$id] ?? null, $orderedIds)
         );
-        $this->fields = array_filter($this->fields);
+        $this->fields = array_values(array_filter($this->fields));
         $this->reindex();
         $this->syncRaw();
     }
@@ -158,8 +185,11 @@ class FormBuilder extends Component
             $this->schemaErrors = $errors;
             return;
         }
-        $this->fields       = $decoded['fields'];
-        $this->schemaErrors = [];
+        $this->fields        = $decoded['fields'];
+        $this->schemaErrors  = [];
+        $this->showRawEditor = false;
+        $this->syncRaw();
+        $this->dispatch('toast', message: 'Schema applied — ' . count($this->fields) . ' fields', type: 'success');
     }
 
     public function save(): void
@@ -195,7 +225,9 @@ class FormBuilder extends Component
         Cache::forget("form_schema_{$form->slug}");
 
         $this->saveStatus = 'Saved!';
+        $this->dirty      = false;
         $this->dispatch('form-saved');
+        $this->dispatch('toast', message: 'Form saved', type: 'success');
     }
 
     public function generateWithAI(): void
@@ -211,6 +243,7 @@ class FormBuilder extends Component
         GenerateFormWithAI::dispatch($form, $this->aiPrompt, $this->aiMode);
 
         Cache::put("ai_job_status_{$this->formId}", 'queued', 600);
+        $this->dispatch('toast', message: 'AI is on it — hang tight', type: 'info');
         $this->aiJobStatus = 'queued';
         $this->aiPrompt    = '';
     }
@@ -227,7 +260,12 @@ class FormBuilder extends Component
             $form         = Form::findOrFail($this->formId);
             $this->fields = $form->schema['fields'] ?? [];
             $this->syncRaw();
+            $this->dirty = false;
             Cache::forget("ai_job_status_{$this->formId}");
+            $this->dispatch('toast', message: 'AI built ' . count($this->fields) . ' fields for you', type: 'success');
+            $this->dispatch('ai-done');
+        } elseif (str_starts_with($status, 'failed')) {
+            $this->dispatch('toast', message: 'AI generation failed', type: 'error');
         }
     }
 
@@ -240,7 +278,9 @@ class FormBuilder extends Component
 
         $this->fields = $version->schema['fields'] ?? [];
         $this->syncRaw();
+        $this->dirty      = false;
         $this->saveStatus = 'Rolled back to version ' . $version->version_number;
+        $this->dispatch('toast', message: $this->saveStatus, type: 'success');
     }
 
     public function getSelectedField(): ?array
@@ -258,6 +298,7 @@ class FormBuilder extends Component
 
     private function syncRaw(): void
     {
+        $this->dirty         = true;
         $this->rawSchemaJson = json_encode(['fields' => $this->fields], JSON_PRETTY_PRINT);
     }
 
@@ -277,6 +318,7 @@ class FormBuilder extends Component
         $selectedField = $this->getSelectedField();
 
         return view('livewire.form-builder', compact('versions', 'selectedField'))
-            ->layout('layouts.app');
+            ->layout('layouts.app')
+            ->title($this->title ?: 'New form');
     }
 }

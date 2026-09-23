@@ -1,11 +1,11 @@
-# AI Form Builder - Complete Setup & Start Script
+# FormForge - Complete Setup & Start Script
 # Run once: powershell -ExecutionPolicy Bypass -File start.ps1
 
-$projectPath = "C:\Users\Lenovo\Desktop\Personal\BackendProject\form-builder"
+$projectPath = $PSScriptRoot
 Set-Location $projectPath
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "AI Form Builder - Setup & Start" -ForegroundColor Green
+Write-Host "FormForge - Setup & Start" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 

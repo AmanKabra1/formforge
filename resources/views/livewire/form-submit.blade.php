@@ -1,137 +1,139 @@
-<div class="min-h-screen bg-gray-50 py-10 px-4">
-    <div class="max-w-2xl mx-auto">
+@php
+    $questions = collect($form->fields)->where('type', '!=', 'heading');
+    $minutes   = max(1, (int) ceil($questions->count() * 0.35));
+    $n = 0;
+@endphp
 
-        @if($submitted)
-            <div class="bg-white rounded-2xl shadow p-10 text-center">
-                <div class="text-6xl mb-4">✅</div>
-                <h2 class="text-2xl font-bold text-gray-800 mb-2">Thank you!</h2>
-                <p class="text-gray-500">{{ $successMsg }}</p>
+<div class="min-h-screen px-4 pb-16"
+     x-data="{
+        pct: 0,
+        answered: 0,
+        total: {{ $questions->count() }},
+        measure() {
+            const qs = [...this.$root.querySelectorAll('[data-question]')];
+            this.answered = qs.filter(q => [...q.querySelectorAll('input, textarea, select')].some(el =>
+                (el.type === 'radio' || el.type === 'checkbox') ? el.checked
+                : el.type === 'file' ? el.files.length > 0
+                : el.value.trim() !== ''
+            )).length;
+            this.pct = this.total ? Math.round(this.answered / this.total * 100) : 0;
+        },
+     }"
+     x-init="$nextTick(() => measure())"
+     @input="measure()" @change="measure()">
+
+    @if ($submitted)
+        {{-- ───────── Success ───────── --}}
+        <div class="mx-auto flex min-h-screen max-w-lg items-center" x-init="setTimeout(() => window.celebrate(), 150)">
+            <div class="card w-full animate-fade-up p-10 text-center">
+                <div class="mx-auto flex h-20 w-20 animate-pop items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 shadow-xl shadow-emerald-500/30">
+                    <svg viewBox="0 0 24 24" class="h-10 w-10 text-white" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12.5 10 17.5 19 7" stroke-dasharray="24" stroke-dashoffset="24" class="animate-draw" />
+                    </svg>
+                </div>
+                <h2 class="mt-6 text-3xl font-extrabold tracking-tight text-ink">You're all set!</h2>
+                <p class="mt-2 text-slate-500">{{ $successMsg }}</p>
+                <div class="mt-8 flex flex-wrap justify-center gap-2">
+                    <a href="{{ request()->url() }}" class="btn btn-secondary">
+                        <x-icon name="refresh" /> Submit another response
+                    </a>
+                </div>
             </div>
-        @else
-            <div class="bg-white rounded-2xl shadow overflow-hidden">
-                {{-- Form Header --}}
-                <div class="bg-indigo-600 px-8 py-6">
-                    <h1 class="text-2xl font-bold text-white">{{ $form->title }}</h1>
-                    @if($form->description)
-                        <p class="text-indigo-100 mt-1 text-sm">{{ $form->description }}</p>
+        </div>
+    @else
+        {{-- ───────── Progress bar ───────── --}}
+        <div class="glass sticky top-0 z-30 -mx-4 mb-8 border-b border-slate-200/60 px-4">
+            <div class="mx-auto flex h-14 max-w-2xl items-center gap-4">
+                <x-application-logo class="h-7 w-7 shrink-0" />
+                <div class="flex-1">
+                    <div class="h-2 overflow-hidden rounded-full bg-slate-200/80">
+                        <div class="h-full rounded-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-amber-400 transition-all duration-500 ease-out"
+                             :style="`width: ${pct}%`"></div>
+                    </div>
+                </div>
+                <span class="w-24 text-right text-xs font-semibold tabular-nums text-slate-500">
+                    <span x-text="answered">0</span>/<span x-text="total">{{ $questions->count() }}</span> answered
+                </span>
+            </div>
+        </div>
+
+        <div class="mx-auto max-w-2xl">
+            {{-- ───────── Header ───────── --}}
+            <div class="relative animate-fade-up overflow-hidden rounded-3xl bg-ink px-8 py-10 text-white shadow-2xl shadow-violet-900/20">
+                <div class="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-fuchsia-500/50 blur-3xl"></div>
+                <div class="absolute -bottom-24 -left-10 h-64 w-64 rounded-full bg-violet-600/60 blur-3xl"></div>
+                <div class="absolute inset-0 opacity-[.12]" style="background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 20px 20px;"></div>
+                <div class="relative">
+                    <div class="mb-4 flex flex-wrap gap-2 text-xs font-semibold">
+                        <span class="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/15"><x-icon name="clock" size="w-3.5 h-3.5" /> ~{{ $minutes }} min</span>
+                        <span class="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/15"><x-icon name="layers" size="w-3.5 h-3.5" /> {{ $questions->count() }} questions</span>
+                    </div>
+                    <h1 class="text-3xl font-extrabold tracking-tight sm:text-4xl">{{ $form->title }}</h1>
+                    @if ($form->description)
+                        <p class="mt-3 max-w-xl text-white/70">{{ $form->description }}</p>
                     @endif
                 </div>
-
-                {{-- Form Body --}}
-                <form wire:submit="submit" class="p-8 space-y-5">
-
-                    @foreach($form->fields as $field)
-                        @php $key = $field['key']; $type = $field['type']; @endphp
-
-                        @if($type === 'heading')
-                            <div class="pt-4 border-t border-gray-100 {{ !$loop->first ? 'mt-6' : '' }}">
-                                <h3 class="text-base font-bold text-gray-700">{{ $field['label'] }}</h3>
-                            </div>
-                            @continue
-                        @endif
-
-                        <div wire:key="field-{{ $key }}">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                {{ $field['label'] }}
-                                @if($field['required'] ?? false)
-                                    <span class="text-red-500">*</span>
-                                @endif
-                            </label>
-
-                            @if(!empty($field['help_text']))
-                                <p class="text-xs text-gray-500 mb-1">{{ $field['help_text'] }}</p>
-                            @endif
-
-                            @switch($type)
-                                @case('textarea')
-                                    <textarea wire:model="answers.{{ $key }}" rows="3"
-                                              placeholder="{{ $field['placeholder'] ?? '' }}"
-                                              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200"></textarea>
-                                    @break
-                                @case('dropdown')
-                                    <select wire:model="answers.{{ $key }}"
-                                            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200">
-                                        <option value="">-- Select --</option>
-                                        @foreach($field['options'] ?? [] as $opt)
-                                            <option value="{{ $opt['value'] }}">{{ $opt['label'] }}</option>
-                                        @endforeach
-                                    </select>
-                                    @break
-                                @case('radio')
-                                    <div class="space-y-2 mt-1">
-                                        @foreach($field['options'] ?? [] as $opt)
-                                            <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="radio" wire:model="answers.{{ $key }}"
-                                                       value="{{ $opt['value'] }}"
-                                                       class="text-indigo-600 border-gray-300 shrink-0" />
-                                                <span class="text-sm text-gray-700">{{ $opt['label'] }}</span>
-                                            </label>
-                                        @endforeach
-                                    </div>
-                                    @break
-                                @case('checkbox')
-                                    <div class="space-y-2 mt-1">
-                                        @foreach($field['options'] ?? [] as $opt)
-                                            <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" wire:model="answers.{{ $key }}"
-                                                       value="{{ $opt['value'] }}"
-                                                       class="rounded text-indigo-600 border-gray-300 shrink-0" />
-                                                <span class="text-sm text-gray-700">{{ $opt['label'] }}</span>
-                                            </label>
-                                        @endforeach
-                                    </div>
-                                    @break
-                                @case('rating')
-                                    <div class="flex gap-2 mt-1" x-data="{ val: @json($answers[$key] ?? 0), hover: 0 }">
-                                        @for($i = 1; $i <= 5; $i++)
-                                            <label class="cursor-pointer"
-                                                   @mouseenter="hover = {{ $i }}" @mouseleave="hover = 0">
-                                                <input type="radio" wire:model="answers.{{ $key }}"
-                                                       value="{{ $i }}" class="sr-only"
-                                                       @change="val = {{ $i }}" />
-                                                <span class="text-2xl transition-colors"
-                                                      :class="(hover || val) >= {{ $i }} ? 'text-yellow-400' : 'text-gray-300'">★</span>
-                                            </label>
-                                        @endfor
-                                    </div>
-                                    @break
-                                @case('file')
-                                    <input type="file" wire:model="answers.{{ $key }}"
-                                           class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
-                                    @break
-                                @case('date')
-                                    <input type="date" wire:model="answers.{{ $key }}"
-                                           class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200" />
-                                    @break
-                                @case('number')
-                                    <input type="number" wire:model="answers.{{ $key }}"
-                                           placeholder="{{ $field['placeholder'] ?? '' }}"
-                                           min="{{ $field['validation']['min'] ?? '' }}"
-                                           max="{{ $field['validation']['max'] ?? '' }}"
-                                           class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200" />
-                                    @break
-                                @default
-                                    <input type="{{ $type === 'email' ? 'email' : ($type === 'phone' ? 'tel' : 'text') }}"
-                                           wire:model="answers.{{ $key }}"
-                                           placeholder="{{ $field['placeholder'] ?? '' }}"
-                                           class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200" />
-                            @endswitch
-
-                            @error("answers.{$key}")
-                                <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
-                            @enderror
-                        </div>
-                    @endforeach
-
-                    <div class="pt-4">
-                        <button type="submit" wire:loading.attr="disabled"
-                                class="w-full py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-                            <span wire:loading>Submitting...</span>
-                            <span wire:loading.remove>Submit Response</span>
-                        </button>
-                    </div>
-                </form>
             </div>
-        @endif
-    </div>
+
+            {{-- ───────── Questions ───────── --}}
+            <form wire:submit="submit" class="stagger mt-6 space-y-4">
+                @foreach ($form->fields as $field)
+                    @php $key = $field['key']; @endphp
+
+                    @if ($field['type'] === 'heading')
+                        <div class="flex items-center gap-3 px-1 pt-6" style="--i: {{ min($loop->index, 10) }}">
+                            <span class="h-px flex-1 bg-gradient-to-r from-transparent to-slate-300"></span>
+                            <h3 class="text-sm font-extrabold uppercase tracking-widest text-slate-500">{{ $field['label'] }}</h3>
+                            <span class="h-px flex-1 bg-gradient-to-l from-transparent to-slate-300"></span>
+                        </div>
+                        @continue
+                    @endif
+
+                    @php $n++; @endphp
+                    <div wire:key="field-{{ $key }}" data-question style="--i: {{ min($loop->index, 10) }}"
+                         class="card p-6 transition duration-300 focus-within:-translate-y-0.5 focus-within:border-violet-300 focus-within:shadow-xl focus-within:shadow-violet-500/10
+                                @error("answers.{$key}") border-rose-300 ring-4 ring-rose-500/10 @enderror">
+                        <div class="flex gap-4">
+                            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-xs font-bold text-violet-700">{{ $n }}</span>
+                            <div class="min-w-0 flex-1">
+                                <label class="block text-base font-bold text-ink">
+                                    {{ $field['label'] }}
+                                    @if ($field['required'] ?? false)
+                                        <span class="text-rose-500">*</span>
+                                    @endif
+                                </label>
+                                @if (!empty($field['help_text']))
+                                    <p class="mt-0.5 text-sm text-slate-500">{{ $field['help_text'] }}</p>
+                                @endif
+
+                                <div class="mt-3">
+                                    @include('forms.partials.field-input', ['field' => $field, 'model' => "answers.{$key}", 'value' => $answers[$key] ?? null])
+                                </div>
+
+                                @error("answers.{$key}")
+                                    <p class="mt-2 flex animate-fade-up items-center gap-1.5 text-sm font-medium text-rose-600">
+                                        <x-icon name="alert" size="w-3.5 h-3.5" /> {{ $message }}
+                                    </p>
+                                @enderror
+                            </div>
+                        </div>
+                    </div>
+                @endforeach
+
+                <div class="pt-4">
+                    <button type="submit" wire:loading.attr="disabled"
+                            class="btn btn-primary group relative h-14 w-full overflow-hidden text-base">
+                        <span class="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full"></span>
+                        <svg wire:loading wire:target="submit" class="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity=".3" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+                        <span wire:loading.remove wire:target="submit">Submit response</span>
+                        <span wire:loading wire:target="submit">Sending…</span>
+                        <x-icon name="arrow-right" wire:loading.remove wire:target="submit" class="transition group-hover:translate-x-1" />
+                    </button>
+                    <p class="mt-4 text-center text-xs text-slate-400">
+                        Built with <span class="font-bold text-slate-500">Form<span class="text-gradient">Forge</span></span> · Never submit passwords through forms.
+                    </p>
+                </div>
+            </form>
+        </div>
+    @endif
 </div>

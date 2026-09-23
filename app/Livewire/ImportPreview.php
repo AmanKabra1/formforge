@@ -84,6 +84,7 @@ class ImportPreview extends Component
     public function render()
     {
         return view('livewire.import-preview')
-            ->layout('layouts.app');
+            ->layout('layouts.app')
+            ->title('Import');
     }
 }

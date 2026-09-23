@@ -19,7 +19,16 @@ class FormController extends Controller
             ->orderByDesc('updated_at')
             ->paginate(12);
 
-        return view('forms.index', compact('forms'));
+        $userForms = Form::where('user_id', auth()->id());
+        $stats = [
+            'forms'     => (clone $userForms)->count(),
+            'published' => (clone $userForms)->where('status', 'published')->count(),
+            'responses' => FormSubmission::whereIn('form_id', (clone $userForms)->select('id'))->count(),
+            'week'      => FormSubmission::whereIn('form_id', (clone $userForms)->select('id'))
+                               ->where('created_at', '>=', now()->subDays(7))->count(),
+        ];
+
+        return view('forms.index', compact('forms', 'stats'));
     }
 
     public function edit(Form $form)
