@@ -62,22 +62,21 @@ PROMPT;
     {
         $start = microtime(true);
 
-        $provider = config('services.ai.provider', 'openai');
-
-        if ($provider === 'claude') {
-            return $this->callClaude($userMessage, $start);
-        }
-
-        return $this->callOpenAI($userMessage, $start);
+        return match (config('services.ai.provider', 'groq')) {
+            'gemini', 'google' => $this->callGemini($userMessage, $start),
+            'claude'           => $this->callClaude($userMessage, $start),
+            'openai'           => $this->callOpenAICompatible('OpenAI', 'https://api.openai.com/v1/chat/completions',
+                                      config('services.openai.key'), config('services.openai.model'), $userMessage, $start),
+            default            => $this->callOpenAICompatible('Groq', 'https://api.groq.com/openai/v1/chat/completions',
+                                      config('services.groq.key'), config('services.groq.model'), $userMessage, $start),
+        };
     }
 
-    private function callOpenAI(string $userMessage, float $start): array
+    /** OpenAI and Groq share the same chat-completions API. */
+    private function callOpenAICompatible(string $name, string $url, ?string $key, string $model, string $userMessage, float $start): array
     {
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . config('services.openai.key'),
-            'Content-Type'  => 'application/json',
-        ])->timeout(60)->post('https://api.openai.com/v1/chat/completions', [
-            'model'           => 'gpt-4o-mini',
+        $response = Http::withToken((string) $key)->timeout(60)->post($url, [
+            'model'           => $model,
             'messages'        => [
                 ['role' => 'system', 'content' => $this->systemPrompt],
                 ['role' => 'user',   'content' => $userMessage],
@@ -87,18 +86,59 @@ PROMPT;
         ]);
 
         if ($response->failed()) {
-            throw new \RuntimeException('OpenAI API error: ' . $response->body());
+            throw new \RuntimeException("{$name} API error: " . $response->body());
         }
 
-        $data   = $response->json();
-        $schema = json_decode($data['choices'][0]['message']['content'], true);
+        $data = $response->json();
 
         return [
-            'schema'  => $this->validateAndRepair($schema),
-            'model'   => $data['model'],
-            'usage'   => $data['usage'],
+            'schema'  => $this->validateAndRepair($this->decodeJson($data['choices'][0]['message']['content'] ?? '')),
+            'model'   => $data['model'] ?? $model,
+            'usage'   => $data['usage'] ?? [],
             'latency' => (int) ((microtime(true) - $start) * 1000),
         ];
+    }
+
+    private function callGemini(string $userMessage, float $start): array
+    {
+        $model    = config('services.gemini.model');
+        $response = Http::withHeaders(['x-goog-api-key' => (string) config('services.gemini.key')])
+            ->timeout(60)
+            ->post("https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent", [
+                'systemInstruction' => ['parts' => [['text' => $this->systemPrompt]]],
+                'contents'          => [['role' => 'user', 'parts' => [['text' => $userMessage]]]],
+                'generationConfig'  => ['responseMimeType' => 'application/json', 'temperature' => 0.3],
+            ]);
+
+        if ($response->failed()) {
+            throw new \RuntimeException('Gemini API error: ' . $response->body());
+        }
+
+        $data = $response->json();
+        $text = collect($data['candidates'][0]['content']['parts'] ?? [])->pluck('text')->implode('');
+
+        return [
+            'schema'  => $this->validateAndRepair($this->decodeJson($text)),
+            'model'   => $data['modelVersion'] ?? $model,
+            'usage'   => [
+                'prompt_tokens'     => $data['usageMetadata']['promptTokenCount'] ?? 0,
+                'completion_tokens' => $data['usageMetadata']['candidatesTokenCount'] ?? 0,
+            ],
+            'latency' => (int) ((microtime(true) - $start) * 1000),
+        ];
+    }
+
+    /** Decode model output, tolerating ```json fences. */
+    private function decodeJson(string $text): array
+    {
+        $text    = trim(preg_replace('/^```(?:json)?\s*|\s*```$/', '', trim($text)));
+        $decoded = json_decode($text, true);
+
+        if (!is_array($decoded)) {
+            throw new \RuntimeException('AI returned invalid JSON: ' . Str::limit($text, 200));
+        }
+
+        return $decoded;
     }
 
     private function callClaude(string $userMessage, float $start): array
@@ -108,7 +148,7 @@ PROMPT;
             'anthropic-version' => '2023-06-01',
             'Content-Type'      => 'application/json',
         ])->timeout(60)->post('https://api.anthropic.com/v1/messages', [
-            'model'      => 'claude-haiku-4-5-20251001',
+            'model'      => config('services.claude.model'),
             'max_tokens' => 4096,
             'system'     => $this->systemPrompt,
             'messages'   => [
@@ -120,11 +160,10 @@ PROMPT;
             throw new \RuntimeException('Claude API error: ' . $response->body());
         }
 
-        $data   = $response->json();
-        $schema = json_decode($data['content'][0]['text'], true);
+        $data = $response->json();
 
         return [
-            'schema'  => $this->validateAndRepair($schema),
+            'schema'  => $this->validateAndRepair($this->decodeJson($data['content'][0]['text'] ?? '')),
             'model'   => $data['model'],
             'usage'   => ['prompt_tokens' => $data['usage']['input_tokens'], 'completion_tokens' => $data['usage']['output_tokens']],
             'latency' => (int) ((microtime(true) - $start) * 1000),

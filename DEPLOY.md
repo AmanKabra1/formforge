@@ -1,85 +1,109 @@
-# Deploying FormForge
+# Deploying FormForge to Render (step by step)
 
-FormForge is a standard Laravel app. Any host that runs it needs three things:
+The repo already contains everything Render needs:
 
-1. **A web process** that serves `public/`.
-2. **A queue worker** (`php artisan queue:work`). AI generation and document import run as queued jobs, and they never finish without a worker.
-3. **Persistent storage** for the database and uploaded files. Many hosts wipe the disk on every deploy, so use a managed MySQL or Postgres database there rather than SQLite.
+| File | What it does |
+|---|---|
+| `Dockerfile` | Builds the app: PHP 8.2 + Apache, Composer packages, Vite/Tailwind assets |
+| `docker/start.sh` | On every boot: caches config, runs migrations, starts the **queue worker** (AI + imports), then Apache |
+| `render.yaml` | Blueprint that creates the web service **and** a free PostgreSQL database |
 
-## Environment variables (all hosts)
+Everything runs on Render's **free plan**. The queue worker runs inside the web container, because Render's free plan has no separate background workers.
 
-```dotenv
-APP_NAME=FormForge
-APP_ENV=production
-APP_DEBUG=false
-APP_KEY=base64:...            # generate locally: php artisan key:generate --show
-APP_URL=https://your-domain.com
+---
 
-DB_CONNECTION=pgsql           # or mysql; fill in the host's DB_HOST / DB_PORT / DB_DATABASE / DB_USERNAME / DB_PASSWORD
-QUEUE_CONNECTION=database
-SESSION_DRIVER=database
-CACHE_STORE=database
+## Step 1: Push the code to GitHub
 
-AI_PROVIDER=openai            # or claude
-OPENAI_API_KEY=...            # or CLAUDE_API_KEY=...
-```
-
-Never commit `.env`. It is already in `.gitignore`. Set these in the host's dashboard.
-
-## Build and release commands
+The latest code must be on GitHub (`https://github.com/AmanKabra1/formforge`):
 
 ```bash
-composer install --no-dev --optimize-autoloader
-npm ci && npm run build
-php artisan migrate --force
-php artisan storage:link
-php artisan config:cache && php artisan route:cache && php artisan view:cache
+git push origin master
 ```
 
-Don't run `db:seed` in production. It creates a `demo@example.com` account with the password `password`.
+## Step 2: Generate an APP_KEY (on your computer)
+
+In the project folder, run:
+
+```bash
+php artisan key:generate --show
+```
+
+Copy the whole line it prints. It looks like `base64:AbC123...=`. You'll paste it in Step 4.
+
+## Step 3: Create the Blueprint on Render
+
+1. Go to **https://dashboard.render.com** and sign up or log in with **GitHub**.
+2. Click **New +** → **Blueprint**.
+3. Connect your GitHub account if asked, then select the **formforge** repo.
+4. Render reads `render.yaml` and shows two resources:
+   - **formforge** (Web Service, Docker, Free)
+   - **formforge-db** (PostgreSQL, Free)
+
+## Step 4: Fill in the secret values
+
+Render asks for the values that aren't stored in the repo:
+
+| Variable | Value |
+|---|---|
+| `APP_KEY` | the `base64:...` line from Step 2 |
+| `GROQ_API_KEY` | your Groq key (`gsk_...`) |
+| `GEMINI_API_KEY` | your Google AI Studio key (optional; leave empty if you're only using Groq) |
+
+Click **Apply**.
+
+## Step 5: Wait for the first deploy (about 5–10 minutes)
+
+Open **formforge → Logs**. You should see:
+
+```
+INFO  Running migrations.
+  ... create_forms_table ......... DONE
+Apache/2.4 configured -- resuming normal operations
+```
+
+When the status turns **Live**, your URL is shown at the top, for example `https://formforge-xxxx.onrender.com`.
+`APP_URL` is picked up automatically from Render, so you don't need to set it.
+
+## Step 6: Use it
+
+1. Open the URL and click **Create an account**.
+2. Click **Generate** on the dashboard and try a prompt. Groq usually answers in a few seconds.
+3. Set a form to **Published**, save it, and share its `/f/...` link.
 
 ---
 
-## Option A: Railway (easiest)
+## Switching the AI provider
 
-1. Sign up at railway.com, choose **New Project → Deploy from GitHub repo**, and pick `formforge`.
-2. Add a **PostgreSQL** database to the project and copy its connection variables into the app's variables, along with the ones above.
-3. In the service settings:
-   - **Build command:** `composer install --no-dev --optimize-autoloader && npm ci && npm run build`
-   - **Start command:** `php artisan migrate --force && php artisan config:cache && php artisan serve --host=0.0.0.0 --port=$PORT`
-4. Add a **second service** from the same repo with the start command `php artisan queue:work --tries=3`. This is the queue worker.
-5. Under **Settings → Networking**, generate a domain, then set `APP_URL` to it.
+In Render, go to **formforge → Environment** and change `AI_PROVIDER`:
 
-Cost: there is a trial credit, then roughly $5/month for small usage.
+- `groq`: uses `GROQ_API_KEY` and `GROQ_MODEL` (default `openai/gpt-oss-120b`)
+- `gemini`: uses `GEMINI_API_KEY` and `GEMINI_MODEL` (default `gemini-2.5-flash`)
 
-## Option B: Render
+Save, and Render redeploys automatically.
 
-1. Create a **Web Service** from the GitHub repo using the PHP/Docker runtime. You'll need a Dockerfile based on `php:8.2-apache` or `serversideup/php`.
-2. Create a **Render Postgres** database and link its variables.
-3. Create a **Background Worker** from the same repo with the command `php artisan queue:work`.
-4. Note: free web services sleep after 15 minutes idle, so the first request after that is slow.
+## Updating the live site
 
-## Option C: Your own VPS (DigitalOcean, Hetzner, AWS Lightsail…)
+Every `git push origin master` redeploys automatically (`autoDeploy: true`).
 
-1. Install Nginx, PHP 8.2 (with the `pdo_sqlite`/`pdo_mysql`, `zip`, `gd`, `mbstring`, `xml` extensions), Composer and Node.
-2. Clone the repo, create `.env`, and run the build and release commands above.
-3. Point the Nginx root at `public/` and add HTTPS with Certbot.
-4. Keep the queue worker running with Supervisor:
+## Good to know about the free plan
 
-   ```ini
-   [program:formforge-worker]
-   command=php /var/www/formforge/artisan queue:work --sleep=3 --tries=3
-   autostart=true
-   autorestart=true
-   user=www-data
-   ```
+- **Sleeps after 15 minutes idle.** The first visit after that takes about 30–60 seconds to wake up.
+- **The free Postgres database expires after 30 days.** Before that, upgrade it (Basic, about $6/month), or create a free database at [neon.tech](https://neon.tech) and put its connection string into `DB_URL`.
+- **Uploaded files are temporary.** Uploads (file answers and imports) are stored on the container disk, which is wiped on each deploy. Form data in Postgres is safe.
+- Don't run `php artisan db:seed` in production. It creates `demo@example.com` / `password`.
 
-Laravel Forge or Ploi can do all of Option C for you for a monthly fee.
+## Troubleshooting
 
----
+| Problem | Fix |
+|---|---|
+| **500 error** + `Unsupported cipher or incorrect key length` in logs | `APP_KEY` is wrong. Paste the full `base64:...` value from Step 2 |
+| AI stays on "Reading your prompt…" forever | Check the logs for `Groq API error`. The key may be wrong, or `AI_PROVIDER` doesn't match the key you set |
+| Page looks unstyled | Hard refresh (Ctrl+F5). If it persists, check that the build log shows `vite build` succeeding |
+| Deploy fails at `migrate` | Make sure `DB_URL` is linked to `formforge-db` (Environment tab) |
 
-## After it's live
+## Running the production image locally (optional)
 
-- Register your own account (don't use the demo one).
-- Create a form, set it to **Published**, and share the `/f/...` link.
-- Check that AI generation completes. If it hangs on "AI is generating…", the queue worker isn't running.
+```bash
+docker build -t formforge .
+docker run -p 8080:10000 -e APP_KEY=base64:... -e DB_CONNECTION=pgsql -e DB_URL=postgresql://user:pass@host/db formforge
+```

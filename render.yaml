@@ -1,0 +1,50 @@
+# Render Blueprint: Dashboard → New → Blueprint → pick this repo.
+# Creates the web app (Docker, free plan) and a free PostgreSQL database.
+services:
+  - type: web
+    name: formforge
+    runtime: docker
+    plan: free
+    region: singapore
+    healthCheckPath: /up
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: FormForge
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY            # paste the output of: php artisan key:generate --show
+        sync: false
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_URL
+        fromDatabase:
+          name: formforge-db
+          property: connectionString
+      - key: SESSION_DRIVER
+        value: database
+      - key: SESSION_SECURE_COOKIE
+        value: "true"
+      - key: CACHE_STORE
+        value: database
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: AI_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY       # your gsk_... key
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GEMINI_API_KEY     # optional; used when AI_PROVIDER=gemini
+        sync: false
+
+databases:
+  - name: formforge-db
+    plan: free
+    region: singapore
+    databaseName: formforge
+    user: formforge

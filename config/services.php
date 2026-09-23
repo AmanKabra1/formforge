@@ -36,15 +36,28 @@ return [
     ],
 
     'ai' => [
-        'provider' => env('AI_PROVIDER', 'openai'),
+        // groq | gemini | openai | claude
+        'provider' => env('AI_PROVIDER', 'groq'),
+    ],
+
+    'groq' => [
+        'key'   => env('GROQ_API_KEY'),
+        'model' => env('GROQ_MODEL', 'openai/gpt-oss-120b'),
+    ],
+
+    'gemini' => [
+        'key'   => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
     ],
 
     'openai' => [
-        'key' => env('OPENAI_API_KEY'),
+        'key'   => env('OPENAI_API_KEY'),
+        'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
     ],
 
     'claude' => [
-        'key' => env('CLAUDE_API_KEY'),
+        'key'   => env('CLAUDE_API_KEY'),
+        'model' => env('CLAUDE_MODEL', 'claude-haiku-4-5-20251001'),
     ],
 
 ];
